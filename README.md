@@ -50,4 +50,3 @@ Open [http://localhost:3000](http://localhost:3000).
 ## SkillPatch skills used
 
 - `doc-coauthoring` — for structuring the exported CODEMAP.md
-- `improve-codebase-architecture` — for repo exploration and analysis conventions
