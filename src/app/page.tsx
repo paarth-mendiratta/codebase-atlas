@@ -12,6 +12,19 @@ interface AnalysisResult {
   totalContentBytes?: number;
 }
 
+function normalizeRepoUrl(input: string): string {
+  const trimmed = input.trim();
+  if (!trimmed) return "";
+
+  // Handle owner/repo shorthand
+  const shorthandRegex = /^([a-zA-Z0-9_.-]+)\/([a-zA-Z0-9_.-]+)$/;
+  if (shorthandRegex.test(trimmed)) {
+    return `https://github.com/${trimmed}`;
+  }
+
+  return trimmed;
+}
+
 export default function Home() {
   const [repoUrl, setRepoUrl] = useState("");
   const [loading, setLoading] = useState(false);
@@ -19,7 +32,8 @@ export default function Home() {
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [viewMode, setViewMode] = useState<"landing" | "graph">("landing");
 
-  const isButtonDisabled = loading || !repoUrl.trim();
+  const normalizedUrl = normalizeRepoUrl(repoUrl);
+  const isButtonDisabled = loading || !normalizedUrl;
 
   const handleAnalyze = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,13 +42,15 @@ export default function Home() {
     setLoading(true);
     setError(null);
 
+    const targetUrl = normalizeRepoUrl(repoUrl);
+
     try {
       const res = await fetch("/api/analyze", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ repoUrl: repoUrl.trim() }),
+        body: JSON.stringify({ repoUrl: targetUrl }),
       });
 
       const contentType = res.headers.get("content-type");
@@ -50,6 +66,7 @@ export default function Home() {
 
       console.log("Analysis Output:", data);
       setResult(data);
+      setRepoUrl(targetUrl);
       setViewMode("graph");
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Something went wrong.";
@@ -99,7 +116,7 @@ export default function Home() {
             Visualize & Explore Any Codebase
           </h1>
           <p className="text-slate-400 text-sm sm:text-base max-w-lg mx-auto">
-            Paste a GitHub repository URL to generate interactive dependency maps, analyze complexity hotspots, and export pre-built context maps for AI coding agents.
+            Paste a GitHub repository URL or shorthand (<code className="text-indigo-300 font-mono">owner/repo</code>) to generate interactive dependency maps, analyze complexity hotspots, and export pre-built context maps for AI coding agents.
           </p>
         </div>
 
@@ -108,7 +125,7 @@ export default function Home() {
           <div className="flex flex-col sm:flex-row items-center gap-3 bg-slate-900/80 p-2 rounded-2xl border border-slate-800 shadow-2xl focus-within:border-indigo-500/50 focus-within:ring-2 focus-within:ring-indigo-500/20 transition-all">
             <input
               type="text"
-              placeholder="https://github.com/owner/repository"
+              placeholder="owner/repo or https://github.com/owner/repo"
               value={repoUrl}
               onChange={(e) => setRepoUrl(e.target.value)}
               disabled={loading}

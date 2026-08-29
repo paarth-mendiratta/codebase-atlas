@@ -41,8 +41,26 @@ export interface ImportEdge {
 }
 
 function parseGitHubUrl(urlStr: string): { owner: string; repo: string } | null {
+  const trimmed = urlStr.trim();
+  if (!trimmed) return null;
+
+  // Handle owner/repo shorthand
+  const shorthandRegex = /^([a-zA-Z0-9_.-]+)\/([a-zA-Z0-9_.-]+)$/;
+  const shorthandMatch = trimmed.match(shorthandRegex);
+  if (shorthandMatch) {
+    const owner = shorthandMatch[1];
+    let repo = shorthandMatch[2];
+    if (repo.endsWith(".git")) repo = repo.slice(0, -4);
+    return { owner, repo };
+  }
+
   try {
-    const url = new URL(urlStr.trim());
+    const urlStrWithProto =
+      trimmed.startsWith("http://") || trimmed.startsWith("https://")
+        ? trimmed
+        : `https://${trimmed}`;
+
+    const url = new URL(urlStrWithProto);
     if (url.hostname !== "github.com") return null;
 
     const parts = url.pathname.split("/").filter(Boolean);
@@ -209,7 +227,7 @@ export async function POST(req: NextRequest) {
 
     if (!repoUrl || typeof repoUrl !== "string") {
       return NextResponse.json(
-        { error: "A valid GitHub repository URL is required." },
+        { error: "A valid GitHub repository URL or 'owner/repo' shorthand is required." },
         { status: 400 }
       );
     }
@@ -217,7 +235,7 @@ export async function POST(req: NextRequest) {
     const repoInfo = parseGitHubUrl(repoUrl);
     if (!repoInfo) {
       return NextResponse.json(
-        { error: "Invalid GitHub URL format. Example: https://github.com/owner/repo" },
+        { error: "Invalid repository format. Enter 'owner/repo' or 'https://github.com/owner/repo'" },
         { status: 400 }
       );
     }
