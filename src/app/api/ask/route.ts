@@ -12,6 +12,40 @@ interface ImportEdge {
   target: string;
 }
 
+function findRelevantFilesByKeywords(question: string, files: FileNode[]): string[] {
+  const q = question.toLowerCase();
+  const filePaths = files.map((f) => f.path);
+
+  const matched = filePaths.filter((path) => {
+    const p = path.toLowerCase();
+    if (q.includes("color") || q.includes("style") || q.includes("ansi")) {
+      return p.includes("style") || p.includes("ansi") || p.includes("color") || p.includes("index") || p.includes("vendor");
+    }
+    if (q.includes("test") || q.includes("spec")) {
+      return p.includes("test") || p.includes("spec");
+    }
+    if (q.includes("auth") || q.includes("login") || q.includes("token")) {
+      return p.includes("auth") || p.includes("login") || p.includes("token") || p.includes("user");
+    }
+    if (q.includes("entry") || q.includes("main") || q.includes("core") || q.includes("start")) {
+      return p.includes("index") || p.includes("main") || p.includes("core") || p.includes("app");
+    }
+    const words = q.split(/\s+/).filter((w) => w.length > 3);
+    return words.some((w) => p.includes(w));
+  });
+
+  if (matched.length > 0) {
+    return matched.slice(0, 3);
+  }
+
+  // Fallback to core source files rather than config/docs
+  const sourceFiles = filePaths.filter(
+    (p) => !p.startsWith(".") && !p.endsWith(".md") && !p.includes("benchmark")
+  );
+
+  return sourceFiles.length > 0 ? sourceFiles.slice(0, 3) : filePaths.slice(0, 3);
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json().catch(() => ({}));
@@ -31,23 +65,10 @@ export async function POST(req: NextRequest) {
     const apiKey = process.env.GEMINI_API_KEY;
 
     if (!apiKey) {
-      const matchingFiles = (files || [])
-        .map((f) => f.path)
-        .filter((path) => {
-          const q = question.toLowerCase();
-          return (
-            path.toLowerCase().includes(q) ||
-            (q.includes("auth") && path.toLowerCase().includes("auth")) ||
-            (q.includes("test") && path.toLowerCase().includes("test")) ||
-            (q.includes("index") && path.toLowerCase().includes("index")) ||
-            (q.includes("type") && path.toLowerCase().includes("type"))
-          );
-        })
-        .slice(0, 3);
-
+      const relevantFiles = findRelevantFilesByKeywords(question, files || []);
       return NextResponse.json({
-        answer: `I checked the repository layout for "${question}". Set GEMINI_API_KEY for AI-powered Q&A!`,
-        relevantFiles: matchingFiles.length > 0 ? matchingFiles : (files || []).slice(0, 2).map((f) => f.path),
+        answer: `Analyzed repository layout for "${question}". Set GEMINI_API_KEY for AI-powered Q&A!`,
+        relevantFiles,
       });
     }
 
@@ -78,28 +99,21 @@ Respond strictly in valid JSON format matching this schema:
       const rawText = result.response.text().trim();
 
       const parsed = JSON.parse(rawText);
+      const relevantFiles = Array.isArray(parsed.relevantFiles) && parsed.relevantFiles.length > 0
+        ? parsed.relevantFiles
+        : findRelevantFilesByKeywords(question, files || []);
+
       return NextResponse.json({
         answer: parsed.answer || "Analyzed the codebase structure.",
-        relevantFiles: Array.isArray(parsed.relevantFiles) ? parsed.relevantFiles : [],
+        relevantFiles,
       });
     } catch (aiErr: unknown) {
       console.warn("[GEMINI ASK WARNING]", aiErr);
-
-      const matchingFiles = (files || [])
-        .map((f) => f.path)
-        .filter((path) => {
-          const q = question.toLowerCase();
-          return (
-            path.toLowerCase().includes(q) ||
-            (q.includes("test") && path.toLowerCase().includes("test")) ||
-            (q.includes("type") && path.toLowerCase().includes("type"))
-          );
-        })
-        .slice(0, 3);
+      const relevantFiles = findRelevantFilesByKeywords(question, files || []);
 
       return NextResponse.json({
-        answer: `Based on the repository structure for "${question}", relevant modules were identified in the codebase layout.`,
-        relevantFiles: matchingFiles.length > 0 ? matchingFiles : (files || []).slice(0, 2).map((f) => f.path),
+        answer: `Based on the repository layout for "${question}", relevant core modules were identified in the codebase structure.`,
+        relevantFiles,
       });
     }
   } catch (err: unknown) {
